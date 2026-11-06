@@ -64,7 +64,7 @@ function ucfirst(s){return s.replace(/^./,function(c){return c.toUpperCase()})}
 var me=null;           // profile do usuario logado
 var db={clientes:[],pedidos:[],eventos:[],equipe:[]};
 var st={view:'hoje',agMode:'dia',agDate:today(),pedFiltro:'ativos',pedBusca:'',cliBusca:'',sheet:null,medSel:{},busy:false};
-var gateMode='entrar';
+var gateMode=null;
 
 function can(k){return !!me&&(me.papel==='dona'||(me.permissoes&&me.permissoes[k]===true))}
 function isDona(){return !!me&&me.papel==='dona'}
@@ -81,8 +81,8 @@ function byPrazo(a,b){return (a.prazo||'9999').localeCompare(b.prazo||'9999')}
 /* ---------- erros ---------- */
 function msgErro(e){
   var m=(e&&(e.message||e.error_description))||String(e||'Erro');
-  if(/Invalid login credentials/i.test(m))return 'E-mail ou senha incorretos.';
-  if(/Email not confirmed/i.test(m))return 'Confirme seu e-mail antes de entrar. Veja a caixa de entrada (e o spam).';
+  if(/Invalid login credentials/i.test(m))return 'Usuário ou senha incorretos.';
+  if(/Email not confirmed/i.test(m))return 'Conta ainda não confirmada. Fale com a dona.';
   if(/already registered|already been registered/i.test(m))return 'Já existe uma conta com esse e-mail. Use "Entrar".';
   if(/Password should be at least/i.test(m))return 'A senha precisa ter pelo menos 6 caracteres.';
   if(/rate limit|too many/i.test(m))return 'Muitas tentativas. Espere alguns minutos e tente de novo.';
@@ -96,7 +96,7 @@ async function q(promise){var r=await promise;if(r.error)throw r.error;return r.
 /* ---------- carga de dados ---------- */
 async function loadAll(){
   var res=await Promise.all([
-    q(sb.from('profiles').select('id,nome,papel,ativo,permissoes,created_at').order('created_at')),
+    q(sb.from('profiles').select(PROFILE_COLS).order('created_at')),
     q(sb.from('clientes').select('id,nome,obs,created_at')),
     can('ver_contatos')?q(sb.from('cliente_contatos').select('cliente_id,telefone,instagram,email')):[],
     q(sb.from('medicoes').select('id,cliente_id,data,valores,obs').order('data')),
@@ -148,34 +148,49 @@ async function mutate(fn,okMsg){
 function showGate(html){$('#shell').hidden=true;closeSheet();var g=$('#gate');g.className='gate';g.hidden=false;g.innerHTML=html}
 function brand(sub){return '<div class="brand"><div class="mark">A</div><h1>Caderno do Ateliê</h1><p>'+esc(sub)+'</p></div>'}
 
-function showLogin(msg,okMsg){
-  var m=gateMode,h=brand(m==='criar'?'Crie sua conta para usar o app.':m==='esqueci'?'Vamos mandar um link para você criar uma senha nova.':'Entre com seu e-mail e senha.');
-  if(m!=='esqueci')h+='<div class="seg">'+[['entrar','Entrar'],['criar','Criar conta']].map(function(x){return '<button type="button" class="'+(m===x[0]?'on':'')+'" data-g="'+x[0]+'">'+x[1]+'</button>'}).join('')+'</div>';
-  h+='<form class="form" id="authForm" data-mode="'+m+'" novalidate>';
-  if(msg)h+='<div class="err" role="alert">'+esc(msg)+'</div>';
-  if(okMsg)h+='<div class="ok-msg" role="status">'+esc(okMsg)+'</div>';
-  if(m==='criar')h+='<label class="field"><span>Seu nome</span><input id="auNome" name="nome" autocomplete="name" required></label>';
-  h+='<label class="field"><span>E-mail</span><input id="auEmail" name="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" required></label>';
-  if(m!=='esqueci')h+='<label class="field"><span>Senha'+(m==='criar'?' <em>(mínimo 6 caracteres)</em>':'')+'</span><input id="auSenha" name="senha" type="password" autocomplete="'+(m==='criar'?'new-password':'current-password')+'" minlength="6" required></label>';
-  h+='<button class="btn primary" type="submit">'+(m==='criar'?'Criar conta':m==='esqueci'?'Enviar link':'Entrar')+'</button>';
-  h+=m==='entrar'?'<button type="button" class="link" data-g="esqueci">Esqueci minha senha</button>':m==='esqueci'?'<button type="button" class="link" data-g="entrar">Voltar para entrar</button>':'';
-  h+='</form>';
+// login por nome de usuario: vira e-mail sintetico (nunca recebe e-mail)
+var DOMINIO='@atelie.local';
+function normUsuario(u){return norm(String(u||'').trim()).replace(/\s+/g,'.')}
+function emailDe(u){u=String(u||'').trim();return u.indexOf('@')>=0?u.toLowerCase():normUsuario(u)+DOMINIO}
+
+async function showLogin(msg,okMsg){
+  if(gateMode==='entrar'||gateMode==='primeiro'){}else gateMode=null;
+  if(!gateMode){
+    showGate('<div class="loading">Carregando…</div>');
+    try{var tem=await q(sb.rpc('tem_dona'));gateMode=tem?'entrar':'primeiro'}catch(e){gateMode='entrar';msg=msg||msgErro(e)}
+  }
+  var m=gateMode,h;
+  if(m==='primeiro'){
+    h=brand('Primeiro acesso: crie a conta da dona do ateliê.');
+    h+='<form class="form" id="authForm" data-mode="primeiro" novalidate>';
+    if(msg)h+='<div class="err" role="alert">'+esc(msg)+'</div>';
+    h+='<div class="note" style="margin-top:0">Esta tela só aparece uma vez. Quem criar esta conta vira a <b>dona</b>, com acesso total. Depois, a dona cria o acesso das costureiras em <b>Equipe</b>.</div>';
+    h+='<label class="field"><span>Nome</span><input id="auNome" name="nome" autocomplete="name" required></label>';
+    h+='<label class="field"><span>Usuário <em>(para entrar no app)</em></span><input id="auUser" name="usuario" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>';
+    h+='<label class="field"><span>Senha <em>(mínimo 6 caracteres)</em></span><input id="auSenha" name="senha" type="password" autocomplete="new-password" minlength="6" required></label>';
+    h+='<button class="btn primary" type="submit">Criar conta da dona</button></form>';
+  }else{
+    h=brand('Entre com seu usuário e senha.');
+    h+='<form class="form" id="authForm" data-mode="entrar" novalidate>';
+    if(msg)h+='<div class="err" role="alert">'+esc(msg)+'</div>';
+    if(okMsg)h+='<div class="ok-msg" role="status">'+esc(okMsg)+'</div>';
+    h+='<label class="field"><span>Usuário</span><input id="auUser" name="usuario" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>';
+    h+='<label class="field"><span>Senha</span><input id="auSenha" name="senha" type="password" autocomplete="current-password" required></label>';
+    h+='<button class="btn primary" type="submit">Entrar</button>';
+    h+='<p class="note" style="margin:0">Não tem acesso ou esqueceu a senha? Peça para a dona do ateliê. Ela cria seu usuário e troca sua senha em <b>Equipe</b>.</p></form>';
+  }
   showGate(h);
 }
-function showNewPassword(msg){
-  showGate(brand('Escolha uma senha nova.')+'<form class="form" id="newPassForm">'+(msg?'<div class="err" role="alert">'+esc(msg)+'</div>':'')+
-    '<label class="field"><span>Senha nova <em>(mínimo 6 caracteres)</em></span><input id="npSenha" name="senha" type="password" autocomplete="new-password" minlength="6" required></label>'+
-    '<button class="btn primary" type="submit">Salvar senha</button></form>');
-}
 function showPending(){
-  showGate(brand('Conta criada.')+'<div class="note" style="margin-top:0"><b>Falta a liberação.</b> Avise a dona do ateliê que você criou a conta'+(me?' como <b>'+esc(me.nome)+'</b>':'')+'. Assim que ela liberar, o app abre normalmente.</div>'+
-    '<div class="actions"><button class="btn primary" data-g="recheck">Já fui liberada</button><button class="btn ghost" data-g="sair">Sair</button></div>');
+  showGate(brand('Acesso bloqueado.')+'<div class="note" style="margin-top:0"><b>Seu acesso está bloqueado.</b> Fale com a dona do ateliê'+(me?' (você é <b>'+esc(me.nome)+'</b>)':'')+'. Assim que ela liberar, o app abre normalmente.</div>'+
+    '<div class="actions"><button class="btn primary" data-g="recheck">Tentar de novo</button><button class="btn ghost" data-g="sair">Sair</button></div>');
 }
 
+var PROFILE_COLS='id,nome,usuario,papel,ativo,permissoes,created_at';
 async function boot(session){
   if(!session){showLogin();return}
   try{
-    var p=await q(sb.from('profiles').select('id,nome,papel,ativo,permissoes,created_at').eq('id',session.user.id).maybeSingle());
+    var p=await q(sb.from('profiles').select(PROFILE_COLS).eq('id',session.user.id).maybeSingle());
     if(!p){showGate(brand('Algo deu errado.')+'<div class="err">Seu perfil não foi encontrado. Fale com quem configurou o app.</div><button class="btn ghost" data-g="sair">Sair</button>');return}
     me=p;
     if(!me.ativo){showPending();return}
@@ -185,49 +200,33 @@ async function boot(session){
 }
 
 document.addEventListener('submit',async function(ev){
-  var f=ev.target;
-  if(f.id==='authForm'){
-    ev.preventDefault();
-    var mode=f.dataset.mode,email=(f.email.value||'').trim(),senha=f.senha?f.senha.value:'',nome=f.nome?f.nome.value.trim():'';
-    if(!email){showLogin('Informe o e-mail.');return}
-    if(mode!=='esqueci'&&senha.length<6){showLogin('A senha precisa ter pelo menos 6 caracteres.');return}
-    if(mode==='criar'&&!nome){showLogin('Informe seu nome.');return}
-    var btn=f.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Aguarde…';
-    try{
-      if(mode==='entrar'){await q(sb.auth.signInWithPassword({email:email,password:senha}))}
-      else if(mode==='criar'){
-        var r=await q(sb.auth.signUp({email:email,password:senha,options:{data:{nome:nome},emailRedirectTo:location.origin+location.pathname}}));
-        if(!r.session){gateMode='entrar';showLogin(null,'Conta criada. Enviamos um e-mail para '+email+'. Toque no link do e-mail e depois entre aqui.')}
-      }else{
-        await q(sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname}));
-        gateMode='entrar';showLogin(null,'Se existir conta com '+email+', enviamos um link para criar senha nova.');
-      }
-    }catch(e){showLogin(msgErro(e))}
-    return;
-  }
-  if(f.id==='newPassForm'){
-    ev.preventDefault();
-    var s=f.senha.value;if(s.length<6){showNewPassword('A senha precisa ter pelo menos 6 caracteres.');return}
-    try{await q(sb.auth.updateUser({password:s}));recovering=false;history.replaceState(null,'',location.pathname);toast('Senha alterada');var se=(await sb.auth.getSession()).data.session;boot(se)}
-    catch(e){showNewPassword(msgErro(e))}
-  }
+  var f=ev.target;if(f.id!=='authForm')return;
+  ev.preventDefault();ev.stopImmediatePropagation();
+  var mode=f.dataset.mode,usuario=(f.usuario.value||'').trim(),senha=f.senha.value||'',nome=f.nome?f.nome.value.trim():'';
+  if(!usuario){showLogin('Informe o usuário.');return}
+  if(!senha){showLogin('Informe a senha.');return}
+  var btn=f.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Aguarde…';
+  try{
+    if(mode==='primeiro'){
+      if(!nome){btn.disabled=false;showLogin('Informe o nome.');return}
+      await q(sb.rpc('criar_primeira_dona',{usuario:normUsuario(usuario),nome:nome,senha:senha}));
+      gateMode='entrar';
+    }
+    await q(sb.auth.signInWithPassword({email:emailDe(usuario),password:senha}));
+  }catch(e){if(/já tem dona/.test(e.message||''))gateMode='entrar';showLogin(msgErro(e))}
 },true);
 
 document.addEventListener('click',async function(ev){
   var b=ev.target.closest('[data-g]');if(!b)return;ev.preventDefault();
   var g=b.dataset.g;
-  if(g==='entrar'||g==='criar'||g==='esqueci'){gateMode=g;showLogin();return}
   if(g==='sair'){await sb.auth.signOut();return}
   if(g==='recheck'){var se=(await sb.auth.getSession()).data.session;showGate('<div class="loading">Verificando…</div>');boot(se)}
 });
 
-var recovering=false;
 sb.auth.onAuthStateChange(function(event,session){
   // nao chamar supabase direto dentro do callback (deadlock conhecido); agenda
   setTimeout(function(){
-    if(event==='PASSWORD_RECOVERY'){recovering=true;showNewPassword();return}
-    if(recovering&&event!=='SIGNED_OUT')return;
-    if(event==='SIGNED_OUT'){recovering=false;me=null;db={clientes:[],pedidos:[],eventos:[],equipe:[]};gateMode='entrar';showLogin();return}
+    if(event==='SIGNED_OUT'){me=null;db={clientes:[],pedidos:[],eventos:[],equipe:[]};gateMode='entrar';showLogin();return}
     if(event==='INITIAL_SESSION'||event==='SIGNED_IN'){if(!me||(session&&me.id!==session.user.id))boot(session)}
   },0);
 });
@@ -270,7 +269,7 @@ function vHoje(){
   var max=Math.max.apply(null,stages.map(function(x){return x.n}).concat([1]));
   var h='<p class="eyebrow" style="margin-top:6px">'+DIAL[d.getDay()]+', '+d.getDate()+' de '+MESL[d.getMonth()]+'</p>';
   var pend=isDona()?db.equipe.filter(function(m){return !m.ativo}).length:0;
-  if(pend)h+='<button class="note" style="display:block;width:100%;text-align:left;border:0" data-a="equipe"><b>'+pend+(pend>1?' pessoas aguardando':' pessoa aguardando')+' liberação.</b> Toque para abrir a equipe.</button>';
+  if(pend)h+='<button class="note" style="display:block;width:100%;text-align:left;border:0" data-a="equipe"><b>'+pend+(pend>1?' pessoas bloqueadas':' pessoa bloqueada')+'.</b> Toque para abrir a equipe.</button>';
   h+='<div class="stats"><button class="stat" data-a="filtro" data-id="ativos"><b>'+prodN+'</b><span>peças em produção</span></button>'+
      (can('ver_financeiro')?'<div class="stat"><b>'+money(receber).replace(/,00$/,'')+'</b><span>a receber de clientes</span></div>'
        :'<button class="stat'+(atras.length?' alert':'')+'" data-a="filtro" data-id="atrasados"><b>'+atras.length+'</b><span>pedidos atrasados</span></button>')+'</div>';
@@ -502,7 +501,7 @@ SHEETS.menu=function(){
   h+='<div class="novo">';
   if(isDona()){
     var pend=db.equipe.filter(function(m){return !m.ativo}).length;
-    h+='<button data-a="equipe"><span class="ic c-accent">E</span><span><b>Equipe'+(pend?' · '+pend+' aguardando':'')+'</b><span>Liberar costureiras e escolher o que cada uma vê.</span></span></button>';
+    h+='<button data-a="equipe"><span class="ic c-accent">E</span><span><b>Equipe'+(pend?' · '+pend+' bloqueada'+(pend>1?'s':''):'')+'</b><span>Criar acessos, trocar senhas e escolher o que cada uma vê.</span></span></button>';
   }
   h+='<button data-a="sair"><span class="ic c-muted">↩</span><span><b>Sair</b><span>Desconectar desta conta neste aparelho.</span></span></button></div>';
   if(!isDona()){
@@ -515,23 +514,41 @@ SHEETS.menu=function(){
 SHEETS.equipe=function(){
   var h=head('Configurações','Equipe');
   var link=location.origin+location.pathname;
-  h+='<div class="note" style="margin-top:0"><b>Para adicionar uma costureira:</b> mande o link do app para ela. Ela toca em "Criar conta" e aparece aqui para você liberar.<br><button class="link" data-a="copy" data-v="'+esc(link)+'">Copiar link do app</button></div>';
+  h+='<div class="actions"><button class="btn primary" data-a="formMembro">Nova pessoa</button></div>';
+  h+='<div class="note"><b>Como funciona:</b> crie o usuário e a senha aqui e mande para a costureira junto com o link do app. Ela entra com eles; não precisa de e-mail.<br><button class="link" data-a="copy" data-v="'+esc(link)+'">Copiar link do app</button></div>';
   var l=db.equipe.slice().sort(function(a,b){return (a.ativo===b.ativo?0:a.ativo?1:-1)||(a.papel==='dona'?-1:b.papel==='dona'?1:0)||a.nome.localeCompare(b.nome,'pt-BR')});
   h+='<div class="sec">'+l.map(function(m){
     var isMe=m.id===me.id,pend=!m.ativo;
     var s='<div class="member'+(pend?' pending':'')+'"><div class="member-h"><span class="ini">'+esc(initials(m.nome))+'</span><span class="main"><span class="t">'+esc(m.nome)+(isMe?' (você)':'')+'</span>'+
-      '<span class="s">'+(m.papel==='dona'?'Dona · acesso total':pend?'Aguardando liberação':'Costureira')+'</span></span>';
+      '<span class="s">'+(m.usuario?'usuário: '+esc(m.usuario)+' · ':'')+(m.papel==='dona'?'dona · acesso total':pend?'bloqueada':'costureira')+'</span></span>';
     if(m.papel!=='dona')s+='<button class="sw" role="switch" aria-checked="'+m.ativo+'" aria-label="Liberar acesso de '+esc(m.nome)+'" data-a="toggleAtivo" data-id="'+m.id+'"></button>';
     s+='</div>';
     if(m.papel!=='dona'&&m.ativo){
       s+=PERMS.map(function(x){var on=!!(m.permissoes&&m.permissoes[x[0]]);
         return '<div class="perm"><span class="txt"><b>'+x[1]+'</b><span>'+x[2]+'</span></span><button class="sw" role="switch" aria-checked="'+on+'" aria-label="'+esc(x[1])+' para '+esc(m.nome)+'" data-a="togglePerm" data-id="'+m.id+'" data-p="'+x[0]+'"></button></div>'}).join('');
     }else if(pend){
-      s+='<div class="s" style="font-size:13px;color:var(--muted)">Ligue a chave para liberar. Ela começa sem ver valores, contatos nem peças de outras costureiras; ajuste depois.</div>';
+      s+='<div class="s" style="font-size:13px;color:var(--muted)">Acesso bloqueado. Ligue a chave para liberar.</div>';
     }
+    s+='<div><button class="link" data-a="formSenha" data-id="'+m.id+'">Trocar senha'+(isMe?' (a sua)':'')+'</button></div>';
     return s+'</div>';
   }).join('')+'</div>';
   return h;
+};
+
+SHEETS.formMembro=function(){
+  return head('Equipe','Nova pessoa')+'<form class="form" data-form="membro">'+
+    '<label class="field"><span>Nome</span><input id="nmNome" name="nome" autocomplete="off" required placeholder="Ex.: Rose Silva"></label>'+
+    '<label class="field"><span>Usuário <em>(o que ela digita para entrar)</em></span><input id="nmUser" name="usuario" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required placeholder="Ex.: rose"></label>'+
+    '<label class="field"><span>Senha inicial <em>(mínimo 6 caracteres)</em></span><input id="nmSenha" name="senha" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="6" required></label>'+
+    '<div class="note" style="margin-top:0">Ela entra liberada, vendo só as peças em que for a responsável. Depois ajuste o que ela pode ver nas chaves da Equipe.</div>'+
+    formBtns()+'</form>';
+};
+SHEETS.formSenha=function(id){
+  var m=membro(id);if(!m)return head('','Pessoa não encontrada');
+  return head('Trocar senha',m.nome)+'<form class="form" data-form="senha" data-id="'+m.id+'">'+
+    (m.usuario?'<div class="note" style="margin-top:0">Usuário: <b>'+esc(m.usuario)+'</b></div>':'')+
+    '<label class="field"><span>Senha nova <em>(mínimo 6 caracteres)</em></span><input id="nsSenha" name="senha" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="6" required></label>'+
+    formBtns()+'</form>';
 };
 
 /* ---------- formularios ---------- */
@@ -639,6 +656,8 @@ var A={
     closeSheet();
     mutate(async function(){await q(sb.from(tbl).delete().eq('id',id));if(paths.length)await sb.storage.from('fotos').remove(paths)},'Excluído');
   },
+  formMembro:function(){openSheet('formMembro')},
+  formSenha:function(b){openSheet('formSenha',b.dataset.id)},
   toggleAtivo:function(b){var m=membro(b.dataset.id);mutate(function(){return q(sb.from('profiles').update({ativo:!m.ativo}).eq('id',m.id))},m.ativo?'Acesso de '+m.nome+' bloqueado':m.nome+' liberada')},
   togglePerm:function(b){var m=membro(b.dataset.id),k=b.dataset.p,perms=Object.assign({},m.permissoes||{});perms[k]=!perms[k];
     mutate(function(){return q(sb.from('profiles').update({permissoes:perms}).eq('id',m.id))})}
@@ -702,6 +721,21 @@ document.addEventListener('submit',function(ev){
     var mid=uuid();st.medSel[id]=mid;st.sheet=null;closeSheet();
     mutate(function(){return q(sb.from('medicoes').insert({id:mid,cliente_id:id,data:g('_data')||today(),valores:vals,obs:g('_obs')||null}))},'Medidas salvas')
       .then(function(ok){if(ok)openSheet('cliente',id)});
+  }
+  else if(kind==='membro'){
+    var u=normUsuario(g('usuario')),nm=g('nome'),pw=fd.get('senha')||'';
+    if(!nm||!u){toast('Preencha nome e usuário.');return}
+    if(pw.length<6){toast('A senha precisa ter pelo menos 6 caracteres.');return}
+    var link=location.origin+location.pathname;
+    mutate(function(){return q(sb.rpc('criar_membro',{usuario:u,nome:nm,senha:pw}))},null).then(function(ok){
+      if(!ok)return;openSheet('equipe');toast('Acesso criado. Usuário: '+u);
+      var txt='Acesso ao app do ateliê\n'+link+'\nUsuário: '+u+'\nSenha: '+pw;
+      try{navigator.clipboard.writeText(txt).then(function(){toast('Acesso criado e copiado. Cole no WhatsApp dela.')},function(){})}catch(e){}
+    });
+  }
+  else if(kind==='senha'){
+    var pw2=fd.get('senha')||'';if(pw2.length<6){toast('A senha precisa ter pelo menos 6 caracteres.');return}
+    mutate(function(){return q(sb.rpc('definir_senha',{membro:id,senha:pw2}))},'Senha trocada').then(function(ok){if(ok)openSheet('equipe')});
   }
   else if(kind==='pag'){
     var v=num(g('valor'));if(!v||v<=0){toast('Informe o valor recebido.');return}
