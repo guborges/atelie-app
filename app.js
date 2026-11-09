@@ -363,14 +363,17 @@ function vClientes(){
 }
 function listClientes(){
   var qq=norm(st.cliBusca),l=db.clientes.slice().sort(function(a,b){return a.nome.localeCompare(b.nome,'pt-BR')});
-  if(qq)l=l.filter(function(c){return norm(c.nome+' '+c.telefone+' '+c.instagram).indexOf(qq)>=0});
+  var dg=String(st.cliBusca).replace(/\D/g,'');
+  if(qq)l=l.filter(function(c){return norm(c.nome+' '+c.telefone+' '+c.instagram).indexOf(qq)>=0||(dg.length>=3&&telDigits(c.telefone).indexOf(dg)>=0)});
   if(!l.length)return empty(qq?'Ninguém com esse nome':'Nenhuma cliente ainda',can('gerenciar_clientes')?'Toque em "Nova cliente".':'');
-  return '<div class="list">'+l.map(function(c){
+  var total=l.length,LIM=150,mais='';
+  if(total>LIM){l=l.slice(0,LIM);mais='<p class="note">Mostrando '+LIM+' de '+total+'. Use a busca acima para achar alguém.</p>'}
+  return '<p class="eyebrow" style="margin:0 0 8px">'+total+(total===1?' cliente':' clientes')+'</p><div class="list">'+l.map(function(c){
     var ps=db.pedidos.filter(function(p){return p.clienteId===c.id}),ab=ps.filter(function(p){return p.status!=='entregue'}).length;
     var med=c.medidas.length?'medidas de '+fmtD(c.medidas[c.medidas.length-1].data):'sem medidas';
     return '<button class="row" data-a="cliente" data-id="'+c.id+'"><span class="ini">'+esc(initials(c.nome))+'</span><span class="main"><span class="t">'+esc(c.nome)+'</span>'+
       '<span class="s">'+(ab?ab+(ab>1?' pedidos em aberto':' pedido em aberto'):ps.length+(ps.length===1?' pedido':' pedidos'))+' · '+med+'</span></span></button>';
-  }).join('')+'</div>';
+  }).join('')+'</div>'+mais;
 }
 function searchBox(key,ph,val){
   return '<div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>'+
@@ -582,6 +585,38 @@ SHEETS.formSenha=function(id){
 /* ---------- formularios ---------- */
 function optList(arr,sel,blank){return (blank!=null?'<option value="">'+esc(blank)+'</option>':'')+arr.map(function(x){return '<option value="'+esc(x[0])+'"'+(String(x[0])===String(sel)?' selected':'')+'>'+esc(x[1])+'</option>'}).join('')}
 function radios(name,arr,sel){return '<div class="radios" role="radiogroup">'+arr.map(function(x,i){return '<label><input type="radio" id="'+name+'_'+i+'" name="'+name+'" value="'+esc(x[0])+'"'+(x[0]===sel?' checked':'')+'><span>'+esc(x[1])+'</span></label>'}).join('')+'</div>'}
+// campo de cliente com busca (lista nativa nao serve com milhares de nomes)
+function comboCliente(pfx,sel,required,hint){
+  var c=sel?cli(sel):null;
+  return '<div class="field"><span>Cliente'+(required?'':' <em>(opcional)</em>')+'</span><div class="combo" data-combo-wrap="'+pfx+'">'+
+    '<input id="'+pfx+'Busca" type="search" data-combo="'+pfx+'" placeholder="'+esc(hint||'Digite o nome ou o telefone')+'" value="'+esc(c?c.nome:'')+'" autocomplete="off" autocorrect="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="'+pfx+'List" aria-autocomplete="list">'+
+    '<input type="hidden" id="'+pfx+'Id" name="cliente_id" value="'+esc(c?c.id:'')+'"'+(required?' data-required="1"':'')+'>'+
+    '<div class="combo-list" id="'+pfx+'List" role="listbox" hidden></div></div></div>';
+}
+function comboBuscar(qq){
+  var t=norm(qq).trim(),dg=String(qq).replace(/\D/g,'');
+  var l=db.clientes;
+  if(t)l=l.filter(function(c){return norm(c.nome).indexOf(t)>=0||(dg.length>=3&&telDigits(c.telefone).indexOf(dg)>=0)});
+  return l.slice().sort(function(a,b){
+    var as=norm(a.nome).indexOf(t)===0?0:1,bs=norm(b.nome).indexOf(t)===0?0:1;
+    return as-bs||a.nome.localeCompare(b.nome,'pt-BR')});
+}
+function comboRender(pfx){
+  var inp=$('#'+pfx+'Busca'),box=$('#'+pfx+'List');if(!inp||!box)return;
+  var qq=inp.value.trim(),res=comboBuscar(qq),MAX=30,h='';
+  if(!qq&&db.clientes.length>MAX){h+='<div class="combo-hint">Digite parte do nome ou do telefone. '+db.clientes.length+' clientes cadastradas.</div>'}
+  else{
+    h+=res.slice(0,MAX).map(function(c){return '<button type="button" role="option" class="combo-opt" data-a="comboPick" data-p="'+pfx+'" data-id="'+c.id+'"><b>'+esc(c.nome)+'</b>'+(c.telefone?'<span>'+esc(c.telefone)+'</span>':'')+'</button>'}).join('');
+    if(res.length>MAX)h+='<div class="combo-hint">+'+(res.length-MAX)+' resultados. Continue digitando para filtrar.</div>';
+    if(!res.length)h+='<div class="combo-hint">Nenhuma cliente com "'+esc(qq)+'".</div>';
+  }
+  if(qq&&can('gerenciar_clientes')&&!res.some(function(c){return norm(c.nome)===norm(qq)}))
+    h+='<button type="button" class="combo-opt combo-new" data-a="comboNova" data-p="'+pfx+'">+ Cadastrar "<b>'+esc(qq)+'</b>" como nova cliente</button>';
+  box.innerHTML=h;box.hidden=false;inp.setAttribute('aria-expanded','true');
+}
+function comboFechar(pfx){var box=$('#'+pfx+'List'),inp=$('#'+pfx+'Busca');if(box)box.hidden=true;if(inp)inp.setAttribute('aria-expanded','false')}
+function comboSet(pfx,c){$('#'+pfx+'Id').value=c?c.id:'';$('#'+pfx+'Busca').value=c?c.nome:'';comboFechar(pfx)}
+
 function clienteOpts(sel,blank){return optList(db.clientes.slice().sort(function(a,b){return a.nome.localeCompare(b.nome,'pt-BR')}).map(function(c){return [c.id,c.nome]}),sel,blank)}
 function formBtns(){return '<div class="actions" style="margin-top:6px"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button type="submit" class="btn primary">Salvar</button></div>'}
 
@@ -592,7 +627,7 @@ SHEETS.formPedido=function(id,o){
   var equipe=db.equipe.filter(function(m){return m.ativo}).map(function(m){return [m.id,m.nome+(m.papel==='dona'?' (dona)':'')]});
   var h=head(p?'Editar pedido':'Novo pedido',p?p.peca:'O que vamos fazer?');
   h+='<form class="form" data-form="pedido" data-id="'+(id||'')+'">'+
-    '<label class="field"><span>Cliente</span><select id="fpCli" name="cliente_id" required>'+clienteOpts(cid,'Escolha a cliente')+'</select></label>'+
+    comboCliente('fpCli',cid,true)+
     '<label class="field"><span>Peça</span><input id="fpPeca" name="peca" required placeholder="Ex.: vestido de madrinha" value="'+esc(p?p.peca:'')+'"></label>'+
     '<div class="field"><span>Tipo</span>'+radios('tipo',TIPOS,p?p.tipo:'sob_medida')+'</div>'+
     '<label class="field"><span>Descrição <em>(tecido, modelo, detalhes)</em></span><textarea id="fpDesc" name="descricao">'+esc(p?p.descricao:'')+'</textarea></label>'+
@@ -615,7 +650,7 @@ SHEETS.formEvento=function(id,o){
     '<label class="field"><span>Horário</span><input id="feHora" type="time" name="hora" value="'+(e?e.hora:'')+'"></label></div>'+
     '<div class="grid2"><label class="field"><span>Duração</span><select id="feDur" name="dur">'+optList([[30,'30 min'],[45,'45 min'],[60,'1 hora'],[90,'1h30'],[120,'2 horas']],e?e.dur:60)+'</select></label>'+
     '<label class="field"><span>Lembrete</span><select id="feLem" name="lembrete">'+optList([[0,'Nenhum'],[15,'15 min antes'],[60,'1 hora antes'],[1440,'1 dia antes']],e?e.lembrete:60)+'</select></label></div>'+
-    '<label class="field"><span>Cliente <em>(opcional)</em></span><select id="feCli" name="cliente_id">'+clienteOpts(cid,'Nenhuma')+'</select></label>'+
+    comboCliente('feCli',cid,false)+
     '<label class="field"><span>Pedido <em>(opcional)</em></span><select id="fePed" name="pedido_id">'+optList(db.pedidos.filter(function(p){return p.status!=='entregue'||p.id===pid}).map(function(p){var c=cli(p.clienteId);return [p.id,p.peca+(c?' · '+c.nome:'')]}),pid,'Nenhum')+'</select></label>'+
     '<label class="field"><span>Observação</span><textarea id="feObs" name="obs">'+esc(e?e.obs:'')+'</textarea></label>';
   return h+formBtns()+'</form>';
@@ -684,6 +719,15 @@ var A={
     closeSheet();
     mutate(async function(){await q(sb.from(tbl).delete().eq('id',id));if(paths.length)await sb.storage.from('fotos').remove(paths)},'Excluído');
   },
+  comboPick:function(b){comboSet(b.dataset.p,cli(b.dataset.id))},
+  comboNova:async function(b){
+    var pfx=b.dataset.p,nome=($('#'+pfx+'Busca').value||'').replace(/\s+/g,' ').trim();if(!nome)return;
+    b.disabled=true;
+    try{var id=uuid();await q(sb.from('clientes').insert({id:id,nome:nome}));
+      var c={id:id,nome:nome,obs:'',telefone:'',instagram:'',email:'',medidas:[]};db.clientes.push(c);
+      comboSet(pfx,c);toast('Cliente "'+nome+'" cadastrada')}
+    catch(e){b.disabled=false;toast(msgErro(e))}
+  },
   importar:function(){st.imp=null;openSheet('importar')},
   impReset:function(){st.imp=null;openSheet('importar')},
   impTodos:function(b){var on=b.dataset.id==='1',fq=norm(($('#impBusca')||{}).value||'');
@@ -713,8 +757,19 @@ var A={
     mutate(function(){return q(sb.from('profiles').update({permissoes:perms}).eq('id',m.id))})}
 };
 
+document.addEventListener('input',function(ev){
+  var pfx=ev.target.dataset&&ev.target.dataset.combo;if(!pfx)return;
+  $('#'+pfx+'Id').value='';comboRender(pfx);
+});
+document.addEventListener('focusin',function(ev){var pfx=ev.target.dataset&&ev.target.dataset.combo;if(pfx)comboRender(pfx)});
+document.addEventListener('keydown',function(ev){
+  var pfx=ev.target.dataset&&ev.target.dataset.combo;if(!pfx)return;
+  if(ev.key==='Enter'){ev.preventDefault();var f=$('#'+pfx+'List .combo-opt');if(f)f.click()}
+  else if(ev.key==='Escape'){ev.stopPropagation();comboFechar(pfx)}
+});
 document.addEventListener('click',function(ev){
   if(ev.target.id==='scrim'){closeSheet();return}
+  document.querySelectorAll('[data-combo-wrap]').forEach(function(w){if(!w.contains(ev.target))comboFechar(w.dataset.comboWrap)});
   var b=ev.target.closest('[data-a]');if(!b)return;
   var fn=A[b.dataset.a];if(fn){ev.preventDefault();fn(b)}
 });
@@ -732,6 +787,7 @@ document.addEventListener('submit',function(ev){
     var isNew=!id,pid=id||uuid();
     var row={cliente_id:g('cliente_id')||null,peca:g('peca'),tipo:g('tipo')||'sob_medida',descricao:g('descricao')||null,prazo:g('prazo')||null,
       costureira_id:can('ver_todos_pedidos')?(g('costureira_id')||null):(isNew?me.id:ped(id).costureiraId)};
+    if(!row.cliente_id){toast('Escolha a cliente na lista (digite e toque no nome).');var cb=$('#fpCliBusca');if(cb){cb.focus();comboRender('fpCli')}return}
     if(!row.peca){toast('Informe a peça.');return}
     if(!isNew&&fd.has('status'))row.status=g('status');
     var valor=num(g('valor')),sinal=num(g('sinal'));

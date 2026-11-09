@@ -230,6 +230,17 @@ textarea{min-height:80px;resize:vertical}
 .ok-msg{background:var(--ok-soft);color:var(--ok);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600}
 .loading{min-height:100vh;min-height:100dvh;display:grid;place-items:center;color:var(--muted);font-size:14px}
 
+/* busca de cliente */
+.combo{position:relative}
+.combo-list{margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;max-height:280px;overflow-y:auto;box-shadow:var(--shadow);overscroll-behavior:contain}
+.combo-opt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 12px;text-align:left}
+.combo-opt:last-child{border-bottom:0}
+.combo-opt:active,.combo-opt:focus-visible{background:var(--surface-2)}
+.combo-opt b{font-weight:600;overflow-wrap:anywhere}
+.combo-opt span{font-size:13px;color:var(--muted)}
+.combo-new{color:var(--accent);display:block}
+.combo-hint{padding:10px 12px;font-size:13px;color:var(--muted)}
+
 /* importar contatos */
 .imp-row{cursor:pointer}
 .chk{width:22px;height:22px;flex:none;accent-color:var(--accent);margin:0}
