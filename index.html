@@ -230,6 +230,31 @@ textarea{min-height:80px;resize:vertical}
 .ok-msg{background:var(--ok-soft);color:var(--ok);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600}
 .loading{min-height:100vh;min-height:100dvh;display:grid;place-items:center;color:var(--muted);font-size:14px}
 
+/* faturamento */
+.fat-card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px 14px 12px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.fat-head{display:flex;flex-direction:column;gap:2px}
+.fat-lbl{font-size:13px;color:var(--muted)}
+.fat-val{font-family:var(--f-display);font-weight:400;font-size:38px;line-height:1.05;font-variant-numeric:tabular-nums}
+.fat-line{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:13px}
+.fat-delta{font-weight:600;font-variant-numeric:tabular-nums}
+.fat-delta.up{color:var(--ok)}
+.fat-delta.down{color:var(--bad)}
+.fat-cmp{color:var(--muted)}
+.fat-per{padding:0}
+.fat-resumo{display:flex;flex-wrap:wrap;gap:6px}
+.fat-resumo span{font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:4px 10px}
+.fat-resumo b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.fat-chart{position:relative;width:100%;min-width:0;touch-action:pan-y}
+.fat-svg{display:block;max-width:100%;height:auto;overflow:visible}
+.fat-grid{stroke:var(--line);stroke-width:1}
+.fat-ytx,.fat-xtx{fill:var(--muted);font-size:11px;font-family:var(--f-body);font-variant-numeric:tabular-nums}
+.fat-cross{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.fat-tip{position:absolute;top:0;pointer-events:none;background:var(--fg);color:var(--bg);border-radius:10px;padding:6px 10px;font-size:12px;display:flex;flex-direction:column;gap:1px;white-space:nowrap;box-shadow:var(--shadow)}
+.fat-tip b{font-size:14px;font-variant-numeric:tabular-nums}
+.fat-tab summary{font-size:13px;color:var(--accent);font-weight:600;cursor:pointer}
+.fat-tab .num{font-variant-numeric:tabular-nums;font-weight:600}
+.fat-nota{margin:0;font-size:12px;color:var(--muted)}
+
 /* busca de cliente */
 .combo{position:relative}
 .combo-list{margin-top:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;max-height:280px;overflow-y:auto;box-shadow:var(--shadow);overscroll-behavior:contain}
