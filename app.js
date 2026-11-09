@@ -532,7 +532,8 @@ SHEETS.cliente=function(id,o){
   var c=cli(id);if(!c)return head('','Cliente não encontrada');
   var h=head('Cliente',c.nome);
   if(can('ver_contatos'))h+='<div class="kv"><div><span>Telefone</span>'+(c.telefone?'<button data-a="copy" data-v="'+esc(c.telefone)+'">'+esc(c.telefone)+'</button>':'<b>—</b>')+'</div>'+
-     '<div><span>Instagram</span><b>'+esc(c.instagram||'—')+'</b></div></div>';
+     '<div><span>Instagram</span><b>'+esc(c.instagram||'—')+'</b></div>'+
+     (c.email?'<div style="grid-column:1/-1"><span>E-mail</span><button data-a="copy" data-v="'+esc(c.email)+'">'+esc(c.email)+'</button></div>':'')+'</div>';
   if(c.obs)h+='<div class="note"><b>Obs.</b> '+esc(c.obs)+'</div>';
   h+='<div class="sec"><div class="sec-h"><p class="eyebrow">Medidas</p><button class="link" data-a="formMedidas" data-id="'+c.id+'">'+(c.medidas.length?'Nova medição':'Tirar medidas')+'</button></div>';
   if(!c.medidas.length)h+='<div class="note">Nenhuma medida registrada ainda.</div>';
@@ -718,7 +719,8 @@ SHEETS.formCliente=function(id){
   var h=head(c?'Editar cliente':'Nova cliente',c?c.nome:'Quem é?')+'<form class="form" data-form="cliente" data-id="'+(id||'')+'">'+
     '<label class="field"><span>Nome</span><input id="fcNome" name="nome" required value="'+esc(c?c.nome:'')+'"></label>';
   if(can('ver_contatos'))h+='<div class="grid2"><label class="field"><span>Telefone / WhatsApp</span><input id="fcTel" name="telefone" inputmode="tel" value="'+esc(c?c.telefone:'')+'"></label>'+
-    '<label class="field"><span>Instagram</span><input id="fcIg" name="instagram" placeholder="@" value="'+esc(c?c.instagram:'')+'"></label></div>';
+    '<label class="field"><span>Instagram</span><input id="fcIg" name="instagram" placeholder="@" value="'+esc(c?c.instagram:'')+'"></label></div>'+
+    '<label class="field"><span>E-mail <em>(opcional)</em></span><input id="fcEmail" name="email" type="email" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" value="'+esc(c?c.email:'')+'"></label>';
   return h+'<label class="field"><span>Observações</span><textarea id="fcObs" name="obs" placeholder="Preferências, evento, indicação…">'+esc(c?c.obs:'')+'</textarea></label>'+formBtns()+'</form>';
 };
 SHEETS.formMedidas=function(id){
@@ -913,7 +915,7 @@ document.addEventListener('submit',function(ev){
     mutate(async function(){
       if(n2)await q(sb.from('clientes').insert({id:cid,nome:nome,obs:g('obs')||null}));
       else await q(sb.from('clientes').update({nome:nome,obs:g('obs')||null}).eq('id',cid));
-      if(can('ver_contatos'))await q(sb.from('cliente_contatos').upsert({cliente_id:cid,telefone:g('telefone')||null,instagram:g('instagram')||null}));
+      if(can('ver_contatos'))await q(sb.from('cliente_contatos').upsert({cliente_id:cid,telefone:g('telefone')||null,instagram:g('instagram')||null,email:g('email')||null}));
     },n2?'Cliente cadastrada':'Salvo').then(function(ok){if(ok&&cli(cid))openSheet('cliente',cid)});
   }
   else if(kind==='medidas'){
