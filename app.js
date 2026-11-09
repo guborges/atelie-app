@@ -358,7 +358,8 @@ function listPedidos(){
 function vClientes(){
   return searchBox('cliBusca','Buscar cliente',st.cliBusca)+
     (can('gerenciar_clientes')?'<div class="actions" style="margin-top:12px"><button class="btn ghost small" data-a="formCliente">Nova cliente</button>'+
-      (can('ver_contatos')?'<button class="btn ghost small" data-a="importar">Importar contatos</button>':'')+'</div>':'')+
+      (can('ver_contatos')?'<button class="btn ghost small" data-a="importar">Importar contatos</button>':'')+
+      (isDona()?'<button class="btn ghost small" data-a="limpeza">Limpar clientes</button>':'')+'</div>':'')+
     '<div id="clist" style="margin-top:12px">'+listClientes()+'</div>';
 }
 function listClientes(){
@@ -399,7 +400,7 @@ function openSheet(type,id,opts,keepScroll){
   sh.innerHTML='<div class="grab"></div>'+SHEETS[type](id,opts||{});
   $('#scrim').hidden=false;document.body.style.overflow='hidden';sh.scrollTop=top;
 }
-function closeSheet(){if(st.sheet&&st.sheet.type==='importar')st.imp=null;$('#scrim').hidden=true;$('#sheet').innerHTML='';st.sheet=null;document.body.style.overflow=''}
+function closeSheet(){if(st.sheet&&st.sheet.type==='importar')st.imp=null;if(st.sheet&&st.sheet.type==='limpeza')st.limp=null;$('#scrim').hidden=true;$('#sheet').innerHTML='';st.sheet=null;document.body.style.overflow=''}
 function head(eyebrow,title){return '<div class="sheet-h"><div>'+(eyebrow?'<p class="eyebrow">'+esc(eyebrow)+'</p>':'')+'<h3>'+esc(title)+'</h3></div><button class="x" data-a="close" aria-label="Fechar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'}
 
 SHEETS.novo=function(){
@@ -468,6 +469,63 @@ SHEETS.importar=function(){
   h+='<div class="imp-foot"><button class="btn primary" id="impGoBtn" data-a="impGo">'+impLabel()+'</button><button class="btn ghost" data-a="impReset">Outro arquivo</button></div>';
   return h;
 };
+/* ---------- limpeza em massa de clientes (so dona) ---------- */
+function temHistorico(c){
+  return c.medidas.length>0||db.pedidos.some(function(p){return p.clienteId===c.id})||db.eventos.some(function(e){return e.clienteId===c.id});
+}
+function soTelefone(nome){return !/[a-z]/.test(norm(nome))}
+function comSimbolos(nome){return /[^a-z0-9\s.,'()\-]/.test(norm(nome))}
+var LIMP_FILTROS=[
+  ['todas','Todas sem histórico',function(){return true}],
+  ['tel','Nome é só número',function(c){return soTelefone(c.nome)}],
+  ['simb','Nome com emoji ou símbolo',function(c){return comSimbolos(c.nome)}],
+  ['semtel','Sem telefone',function(c){return !c.telefone}]
+];
+function limpBase(){return db.clientes.filter(function(c){return !temHistorico(c)})}
+function limpFiltradas(){
+  var f=LIMP_FILTROS.find(function(x){return x[0]===st.limp.filtro})||LIMP_FILTROS[0];
+  var qq=norm(st.limp.busca||'').trim(),dg=String(st.limp.busca||'').replace(/\D/g,'');
+  return limpBase().filter(f[2]).filter(function(c){return !qq||norm(c.nome).indexOf(qq)>=0||(dg.length>=3&&telDigits(c.telefone).indexOf(dg)>=0)})
+    .sort(function(a,b){return a.nome.localeCompare(b.nome,'pt-BR')});
+}
+function limpLabel(){var n=st.limp?st.limp.sel.size:0;if(!n)return 'Marque quem excluir';return (st.limp.confirm?'Toque de novo: excluir ':'Excluir ')+n+(n>1?' clientes':' cliente')}
+function limpListaHtml(){
+  var l=limpFiltradas(),MAX=300,h='';
+  if(!l.length)return empty('Ninguém neste filtro','');
+  h+='<div class="list" id="limpList">'+l.slice(0,MAX).map(function(c){
+    return '<label class="row imp-row"><input type="checkbox" class="chk" data-limp="'+c.id+'"'+(st.limp.sel.has(c.id)?' checked':'')+'>'+
+      '<span class="main"><span class="t">'+esc(c.nome)+'</span><span class="s">'+esc(c.telefone||'sem telefone')+'</span></span></label>'}).join('')+'</div>';
+  if(l.length>MAX)h+='<p class="note">Mostrando '+MAX+' de '+l.length+'. "Marcar todas do filtro" marca as '+l.length+'.</p>';
+  return h;
+}
+SHEETS.limpeza=function(){
+  if(!st.limp)st.limp={filtro:'todas',busca:'',sel:new Set(),confirm:false,desfazer:null};
+  var h=head('Clientes','Limpar clientes');
+  if(st.limp.desfazer){
+    var d=st.limp.desfazer;
+    h+='<div class="ok-msg">'+d.clientes.length+(d.clientes.length>1?' clientes excluídas.':' cliente excluída.')+'</div>'+
+       '<div class="actions" style="margin-top:12px"><button class="btn ghost" data-a="limpDesfazer">Desfazer exclusão</button><button class="btn primary" data-a="limpContinuar">Continuar limpando</button></div>'+
+       '<p class="note">Dá para desfazer enquanto esta tela estiver aberta.</p>';
+    return h;
+  }
+  var base=limpBase(),prot=db.clientes.length-base.length;
+  h+='<div class="note" style="margin-top:0">Aparecem aqui só clientes <b>sem pedido, sem medida e sem agenda</b>. '+
+     (prot?'<b>'+prot+'</b> com histórico ficam protegidas e não aparecem.':'')+'</div>';
+  h+='<div class="chips" style="margin-top:12px">'+LIMP_FILTROS.map(function(f){
+    var n=base.filter(f[2]).length;
+    return '<button class="chip'+(st.limp.filtro===f[0]?' on':'')+'" data-a="limpFiltro" data-id="'+f[0]+'">'+f[1]+'<small>'+n+'</small></button>'}).join('')+'</div>';
+  h+='<div class="search" style="margin-top:8px"><input id="limpBusca" type="search" data-limpbusca="1" placeholder="Filtrar por nome ou telefone" value="'+esc(st.limp.busca)+'" autocomplete="off" aria-label="Filtrar clientes" style="padding-left:12px"></div>';
+  h+='<div class="actions" style="margin-top:10px"><button class="btn ghost small" data-a="limpTodos" data-id="1">Marcar todas do filtro</button><button class="btn ghost small" data-a="limpTodos" data-id="0">Desmarcar todas</button></div>';
+  h+='<div id="limpWrap" style="margin-top:10px">'+limpListaHtml()+'</div>';
+  h+='<div class="imp-foot"><button class="btn danger" id="limpGoBtn" data-a="limpGo">'+limpLabel()+'</button></div>';
+  return h;
+};
+function limpAtualizar(lista){
+  st.limp.confirm=false;
+  var b=$('#limpGoBtn');if(b)b.textContent=limpLabel();
+  if(lista){var w=$('#limpWrap');if(w)w.innerHTML=limpListaHtml()}
+}
+
 function impLabel(){var n=st.imp?st.imp.itens.filter(function(x){return x.sel}).length:0;return n?'Importar '+n+(n>1?' clientes':' cliente'):'Marque quem importar'}
 
 SHEETS.cliente=function(id,o){
@@ -719,6 +777,35 @@ var A={
     closeSheet();
     mutate(async function(){await q(sb.from(tbl).delete().eq('id',id));if(paths.length)await sb.storage.from('fotos').remove(paths)},'Excluído');
   },
+  limpeza:function(){if(!isDona())return;st.limp=null;openSheet('limpeza')},
+  limpFiltro:function(b){st.limp.filtro=b.dataset.id;st.limp.confirm=false;openSheet('limpeza',null,{},true)},
+  limpTodos:function(b){
+    var on=b.dataset.id==='1';
+    if(on)limpFiltradas().forEach(function(c){st.limp.sel.add(c.id)});else st.limp.sel.clear();
+    limpAtualizar(true)},
+  limpGo:function(){
+    var ids=Array.from(st.limp.sel);if(!ids.length){toast('Nenhuma cliente marcada.');return}
+    if(!st.limp.confirm){st.limp.confirm=true;$('#limpGoBtn').textContent=limpLabel();return}
+    // guarda copia para desfazer
+    var bk=db.clientes.filter(function(c){return st.limp.sel.has(c.id)&&!temHistorico(c)});
+    ids=bk.map(function(c){return c.id});
+    var backup={clientes:bk.map(function(c){return {id:c.id,nome:c.nome,obs:c.obs||null}}),
+      contatos:bk.filter(function(c){return c.telefone||c.instagram||c.email}).map(function(c){return {cliente_id:c.id,telefone:c.telefone||null,instagram:c.instagram||null,email:c.email||null}})};
+    $('#limpGoBtn').disabled=true;$('#limpGoBtn').textContent='Excluindo…';
+    mutate(async function(){
+      for(var i=0;i<ids.length;i+=100)await q(sb.from('clientes').delete().in('id',ids.slice(i,i+100)));
+      st.limp.sel.clear();st.limp.confirm=false;st.limp.desfazer=backup;
+    },ids.length+(ids.length>1?' clientes excluídas':' cliente excluída'));
+  },
+  limpDesfazer:function(){
+    var d=st.limp.desfazer;if(!d)return;
+    mutate(async function(){
+      for(var i=0;i<d.clientes.length;i+=200)await q(sb.from('clientes').insert(d.clientes.slice(i,i+200)));
+      for(var j=0;j<d.contatos.length;j+=200)await q(sb.from('cliente_contatos').insert(d.contatos.slice(j,j+200)));
+      st.limp.desfazer=null;
+    },'Exclusão desfeita');
+  },
+  limpContinuar:function(){st.limp.desfazer=null;openSheet('limpeza')},
   comboPick:function(b){comboSet(b.dataset.p,cli(b.dataset.id))},
   comboNova:async function(b){
     var pfx=b.dataset.p,nome=($('#'+pfx+'Busca').value||'').replace(/\s+/g,' ').trim();if(!nome)return;
@@ -760,6 +847,15 @@ var A={
 document.addEventListener('input',function(ev){
   var pfx=ev.target.dataset&&ev.target.dataset.combo;if(!pfx)return;
   $('#'+pfx+'Id').value='';comboRender(pfx);
+});
+document.addEventListener('change',function(ev){
+  var id=ev.target.dataset&&ev.target.dataset.limp;if(!id||!st.limp)return;
+  if(ev.target.checked)st.limp.sel.add(id);else st.limp.sel.delete(id);
+  limpAtualizar(false);
+});
+document.addEventListener('input',function(ev){
+  if(!(ev.target.dataset&&ev.target.dataset.limpbusca)||!st.limp)return;
+  st.limp.busca=ev.target.value;limpAtualizar(true);
 });
 document.addEventListener('focusin',function(ev){var pfx=ev.target.dataset&&ev.target.dataset.combo;if(pfx)comboRender(pfx)});
 document.addEventListener('keydown',function(ev){
