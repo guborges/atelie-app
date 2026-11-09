@@ -230,6 +230,14 @@ textarea{min-height:80px;resize:vertical}
 .ok-msg{background:var(--ok-soft);color:var(--ok);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600}
 .loading{min-height:100vh;min-height:100dvh;display:grid;place-items:center;color:var(--muted);font-size:14px}
 
+/* importar contatos */
+.imp-row{cursor:pointer}
+.chk{width:22px;height:22px;flex:none;accent-color:var(--accent);margin:0}
+.imp-foot{position:sticky;bottom:calc(-28px - env(safe-area-inset-bottom,0px));display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 0 calc(12px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--line)}
+.imp-foot .btn:first-child{flex:2 1 160px}
+.imp-foot .btn:last-child{flex:1 1 100px}
+label.btn{position:relative;display:inline-block}
+
 /* equipe */
 .member{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px}
 .member + .member{margin-top:10px}

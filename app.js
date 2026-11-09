@@ -357,7 +357,8 @@ function listPedidos(){
 }
 function vClientes(){
   return searchBox('cliBusca','Buscar cliente',st.cliBusca)+
-    (can('gerenciar_clientes')?'<div class="actions" style="margin-top:12px"><button class="btn ghost small" data-a="formCliente">Nova cliente</button></div>':'')+
+    (can('gerenciar_clientes')?'<div class="actions" style="margin-top:12px"><button class="btn ghost small" data-a="formCliente">Nova cliente</button>'+
+      (can('ver_contatos')?'<button class="btn ghost small" data-a="importar">Importar contatos</button>':'')+'</div>':'')+
     '<div id="clist" style="margin-top:12px">'+listClientes()+'</div>';
 }
 function listClientes(){
@@ -395,7 +396,7 @@ function openSheet(type,id,opts,keepScroll){
   sh.innerHTML='<div class="grab"></div>'+SHEETS[type](id,opts||{});
   $('#scrim').hidden=false;document.body.style.overflow='hidden';sh.scrollTop=top;
 }
-function closeSheet(){$('#scrim').hidden=true;$('#sheet').innerHTML='';st.sheet=null;document.body.style.overflow=''}
+function closeSheet(){if(st.sheet&&st.sheet.type==='importar')st.imp=null;$('#scrim').hidden=true;$('#sheet').innerHTML='';st.sheet=null;document.body.style.overflow=''}
 function head(eyebrow,title){return '<div class="sheet-h"><div>'+(eyebrow?'<p class="eyebrow">'+esc(eyebrow)+'</p>':'')+'<h3>'+esc(title)+'</h3></div><button class="x" data-a="close" aria-label="Fechar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'}
 
 SHEETS.novo=function(){
@@ -438,6 +439,33 @@ SHEETS.pedido=function(id,o){
      (can('excluir')?'<button class="btn danger" data-a="del" data-k="pedido" data-id="'+p.id+'">'+(o.confirm?'Toque de novo para excluir':'Excluir')+'</button>':'')+'</div>';
   return h;
 };
+
+var PICKER_OK=('contacts' in navigator)&&('ContactsManager' in window);
+SHEETS.importar=function(){
+  var h=head('Clientes','Importar contatos');
+  if(!st.imp){
+    h+='<div class="note" style="margin-top:0"><b>No iPhone:</b> no app Contatos, toque em <b>Listas</b> e crie uma lista (ex.: "Clientes Ateliê") com as clientes. '+
+       'Segure o dedo na lista, toque em <b>Exportar</b> e depois em <b>Salvar em Arquivos</b>. Volte aqui e escolha esse arquivo.</div>'+
+       '<div class="note"><b>Também funciona</b> com arquivo .vcf ou .csv exportado do Google Contatos ou do iCloud.com.</div>'+
+       '<div class="actions" style="margin-top:16px"><label class="btn primary" style="flex:1 1 100%;cursor:pointer">Escolher arquivo de contatos'+
+       '<input type="file" data-import="1" accept=".vcf,.vcard,.csv,text/vcard,text/x-vcard,text/csv,text/comma-separated-values" style="position:absolute;width:1px;height:1px;opacity:0"></label></div>';
+    if(PICKER_OK)h+='<div class="actions" style="margin-top:10px"><button class="btn ghost" style="flex:1 1 100%" data-a="pickContacts">Escolher da agenda do celular</button></div>';
+    h+='<p class="note">Nada é salvo antes de você conferir. Na próxima tela você marca quem entra.</p>';
+    return h;
+  }
+  var it=st.imp.itens,dup=it.filter(function(x){return x.ja}).length;
+  h+='<p class="eyebrow" style="margin:0 0 6px">'+it.length+' contato'+(it.length>1?'s':'')+' no arquivo'+(dup?' · '+dup+' já cadastrada'+(dup>1?'s':''):'')+'</p>';
+  h+='<div class="actions"><button class="btn ghost small" data-a="impTodos" data-id="1">Marcar todos</button><button class="btn ghost small" data-a="impTodos" data-id="0">Desmarcar todos</button></div>';
+  h+='<div class="search" style="margin-top:10px"><input id="impBusca" type="search" data-impbusca="1" placeholder="Filtrar por nome ou telefone" autocomplete="off" aria-label="Filtrar contatos" style="padding-left:12px"></div>';
+  h+='<div class="list" id="impList" style="margin-top:10px">'+it.map(function(x,i){
+    return '<label class="row imp-row" data-i="'+i+'"><input type="checkbox" class="chk" data-impi="'+i+'"'+(x.sel?' checked':'')+'>'+
+      '<span class="main"><span class="t">'+esc(x.nome)+'</span><span class="s">'+esc([x.telefone,x.instagram,x.email].filter(Boolean).join(' · ')||'sem telefone')+'</span>'+
+      (x.ja?'<span class="s txt-warn">já cadastrada: '+esc(x.ja)+'</span>':'')+'</span></label>';
+  }).join('')+'</div>';
+  h+='<div class="imp-foot"><button class="btn primary" id="impGoBtn" data-a="impGo">'+impLabel()+'</button><button class="btn ghost" data-a="impReset">Outro arquivo</button></div>';
+  return h;
+};
+function impLabel(){var n=st.imp?st.imp.itens.filter(function(x){return x.sel}).length:0;return n?'Importar '+n+(n>1?' clientes':' cliente'):'Marque quem importar'}
 
 SHEETS.cliente=function(id,o){
   var c=cli(id);if(!c)return head('','Cliente não encontrada');
@@ -656,6 +684,28 @@ var A={
     closeSheet();
     mutate(async function(){await q(sb.from(tbl).delete().eq('id',id));if(paths.length)await sb.storage.from('fotos').remove(paths)},'Excluído');
   },
+  importar:function(){st.imp=null;openSheet('importar')},
+  impReset:function(){st.imp=null;openSheet('importar')},
+  impTodos:function(b){var on=b.dataset.id==='1',fq=norm(($('#impBusca')||{}).value||'');
+    st.imp.itens.forEach(function(x){if(!fq||norm(x.nome+' '+x.telefone).indexOf(fq)>=0)x.sel=on});
+    document.querySelectorAll('#impList [data-impi]').forEach(function(c){c.checked=st.imp.itens[Number(c.dataset.impi)].sel});
+    $('#impGoBtn').textContent=impLabel()},
+  pickContacts:async function(){
+    try{var r=await navigator.contacts.select(['name','tel','email'],{multiple:true});
+      if(!r||!r.length)return;
+      abrirImport(r.map(function(c){return {nome:(c.name&&c.name[0])||'',telefone:fmtTel((c.tel&&c.tel[0])||''),email:(c.email&&c.email[0])||'',instagram:''}}))}
+    catch(e){if(e&&e.name!=='AbortError')toast('Não foi possível abrir a agenda.')}},
+  impGo:function(){
+    var sel=st.imp.itens.filter(function(x){return x.sel});if(!sel.length){toast('Nenhum contato marcado.');return}
+    var cl=[],ct=[];
+    sel.forEach(function(x){var id=uuid();cl.push({id:id,nome:x.nome.slice(0,120)});
+      if(x.telefone||x.instagram||x.email)ct.push({cliente_id:id,telefone:x.telefone||null,instagram:x.instagram||null,email:x.email||null})});
+    st.imp=null;closeSheet();toast('Importando '+cl.length+'…');
+    mutate(async function(){
+      for(var i=0;i<cl.length;i+=200)await q(sb.from('clientes').insert(cl.slice(i,i+200)));
+      for(var j=0;j<ct.length;j+=200)await q(sb.from('cliente_contatos').insert(ct.slice(j,j+200)));
+    },cl.length+(cl.length>1?' clientes importadas':' cliente importada'));
+  },
   formMembro:function(){openSheet('formMembro')},
   formSenha:function(b){openSheet('formSenha',b.dataset.id)},
   toggleAtivo:function(b){var m=membro(b.dataset.id);mutate(function(){return q(sb.from('profiles').update({ativo:!m.ativo}).eq('id',m.id))},m.ativo?'Acesso de '+m.nome+' bloqueado':m.nome+' liberada')},
@@ -746,6 +796,129 @@ document.addEventListener('submit',function(ev){
       if(p.status==='orcamento')await q(sb.from('pedidos').update({status:'aprovado'}).eq('id',id));
     },'Pagamento registrado');
   }
+});
+
+/* ---------- importar contatos ---------- */
+function telDigits(t){
+  var d=String(t||'').replace(/\D/g,'');
+  if(d.length>=12&&d.slice(0,2)==='55')d=d.slice(2);
+  if((d.length===11||d.length===12)&&d[0]==='0')d=d.slice(1);
+  return d;
+}
+// chave p/ comparar telefones: DDD + ultimos 8 digitos (ignora o 9 extra)
+function telKey(t){var d=telDigits(t);if(d.length<8)return '';return d.length>=10?d.slice(0,2)+d.slice(-8):d.slice(-8)}
+function fmtTel(t){
+  var d=telDigits(t);
+  if(d.length===11)return '('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);
+  if(d.length===10)return '('+d.slice(0,2)+') '+d.slice(2,6)+'-'+d.slice(6);
+  if(d.length===9)return d.slice(0,5)+'-'+d.slice(5);
+  return String(t||'').trim();
+}
+function decodeQP(v){
+  try{var bytes=[];v.replace(/=([0-9A-F]{2})|([\s\S])/gi,function(m,h,c){if(h)bytes.push(parseInt(h,16));else bytes.push.apply(bytes,Array.from(new TextEncoder().encode(c)))});
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes))}catch(e){return v}
+}
+function igHandle(v){var m=String(v).match(/instagram\.com\/([A-Za-z0-9._]+)/i);if(m)return '@'+m[1];return ''}
+function parseVcf(txt){
+  txt=String(txt).replace(/^﻿/,'').replace(/\r\n?/g,'\n').replace(/\n[ \t]/g,'').replace(/=\n/g,'');
+  var out=[],cur=null;
+  txt.split('\n').forEach(function(line){
+    if(/^BEGIN:VCARD/i.test(line)){cur={fn:'',n:'',org:'',tels:[],email:'',instagram:''};return}
+    if(/^END:VCARD/i.test(line)){if(cur)out.push(cur);cur=null;return}
+    if(!cur)return;
+    var i=line.indexOf(':');if(i<0)return;
+    var head=line.slice(0,i),raw=line.slice(i+1),parts=head.split(';');
+    var prop=parts[0].replace(/^.*\./,'').toUpperCase(),params=parts.slice(1).join(';').toUpperCase();
+    if(/QUOTED-PRINTABLE/.test(params))raw=decodeQP(raw);
+    var un=function(v){return v.replace(/\\n/gi,' ').replace(/\\([,;\\])/g,'$1').trim()};
+    if(prop==='FN')cur.fn=un(raw);
+    else if(prop==='N'){var f=raw.replace(/\\;/g,'\u0000').split(';').map(function(x){return un(x.replace(/\u0000/g,';'))});
+      cur.n=[f[3],f[1],f[2],f[0],f[4]].filter(Boolean).join(' ')}
+    else if(prop==='TEL'){var v=un(raw).replace(/^tel:/i,'');if(v)cur.tels.push({v:v,cell:/CELL|MOBILE|IPHONE/.test(params)})}
+    else if(prop==='EMAIL'){if(!cur.email)cur.email=un(raw)}
+    else if(prop==='ORG'){cur.org=un(raw.replace(/\\;/g,'\u0000').split(';')[0].replace(/\u0000/g,';'))}
+    else if(prop==='X-SOCIALPROFILE'||prop==='URL'||prop==='X-INSTAGRAM'){
+      var val=un(raw),h=igHandle(val);
+      if(!h&&(prop==='X-INSTAGRAM'||/INSTAGRAM/.test(params))&&!/[\/:]/.test(val))h='@'+val.replace(/^@/,'');
+      if(h&&!cur.instagram)cur.instagram=h}
+  });
+  return out.map(function(c){
+    var tel=(c.tels.find(function(t){return t.cell})||c.tels[0]||{}).v||'';
+    return {nome:(c.fn||c.n||c.org||'').replace(/\s+/g,' ').trim(),telefone:fmtTel(tel),email:c.email,instagram:c.instagram};
+  });
+}
+function parseCsvRows(txt){
+  txt=String(txt).replace(/^﻿/,'');
+  var first=txt.split(/\r?\n/)[0]||'',sep=first.split(';').length>first.split(',').length?';':',';
+  var rows=[],row=[],f='',inq=false;
+  for(var i=0;i<txt.length;i++){
+    var c=txt[i];
+    if(inq){if(c==='"'){if(txt[i+1]==='"'){f+='"';i++}else inq=false}else f+=c}
+    else if(c==='"')inq=true;
+    else if(c===sep){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&txt[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f=''}
+    else f+=c;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row)}
+  return rows.filter(function(r){return r.some(function(x){return x.trim()})});
+}
+function parseCsv(txt){
+  var rows=parseCsvRows(txt);if(!rows.length)return [];
+  var h=rows[0].map(function(x){return norm(x).trim()});
+  function col(re,not){return h.findIndex(function(x){return re.test(x)&&!(not&&not.test(x))})}
+  var iNome=col(/^(nome|name|nome completo|full name|display name|cliente)$/),iFirst=col(/^(first name|given name|primeiro nome)$/),
+      iMid=col(/^(middle name|additional name|nome do meio)$/),iLast=col(/^(last name|family name|sobrenome)$/),
+      iTel=col(/(phone|telefone|celular|fone|whatsapp|mobile)/,/(type|label|tipo|rotulo|phonetic)/),
+      iMail=col(/e-?mail/,/(type|label|tipo|rotulo)/),iIg=col(/instagram/);
+  var start=1;
+  if(iNome<0&&iFirst<0&&iTel<0){iNome=0;iTel=rows[0].length>1?1:-1;start=0}
+  return rows.slice(start).map(function(r){
+    var g=function(i){return i>=0&&r[i]!=null?String(r[i]).trim():''};
+    var nome=g(iNome)||[g(iFirst),g(iMid),g(iLast)].filter(Boolean).join(' ');
+    var tel=g(iTel).split(':::')[0].trim(),ig=g(iIg);
+    if(ig&&!/^@/.test(ig))ig=igHandle(ig)||('@'+ig);
+    return {nome:nome.replace(/\s+/g,' ').trim(),telefone:fmtTel(tel),email:g(iMail).split(':::')[0].trim(),instagram:ig};
+  });
+}
+function prepararImport(itens){
+  var porTel={},porNome={};
+  db.clientes.forEach(function(c){var k=telKey(c.telefone);if(k)porTel[k]=c.nome;porNome[norm(c.nome)]=c.nome});
+  var vistos={},res=[];
+  itens.forEach(function(x){
+    var nome=(x.nome||'').trim(),tel=x.telefone||'';
+    if(!nome&&!tel)return;
+    if(!nome)nome=tel;
+    var k=telKey(tel),chave=k||('n:'+norm(nome));
+    if(vistos[chave])return;vistos[chave]=1;
+    var ja=(k&&porTel[k])||porNome[norm(nome)]||'';
+    res.push({nome:nome,telefone:tel,email:x.email||'',instagram:x.instagram||'',ja:ja,sel:!ja});
+  });
+  return res.sort(function(a,b){return a.nome.localeCompare(b.nome,'pt-BR')});
+}
+function abrirImport(itens){
+  var l=prepararImport(itens);
+  if(!l.length){toast('Nenhum contato encontrado nesse arquivo.');return}
+  st.imp={itens:l};openSheet('importar');
+}
+window.__atelieImport={parseVcf:parseVcf,parseCsv:parseCsv,telKey:telKey,fmtTel:fmtTel,prepararImport:prepararImport};
+document.addEventListener('change',function(ev){
+  var t=ev.target;
+  if(t.dataset&&t.dataset.impi!=null&&st.imp){st.imp.itens[Number(t.dataset.impi)].sel=t.checked;var b=$('#impGoBtn');if(b)b.textContent=impLabel();return}
+  if(!(t.dataset&&t.dataset.import)||!t.files||!t.files[0])return;
+  var f=t.files[0],r=new FileReader();
+  r.onerror=function(){toast('Não consegui ler esse arquivo.')};
+  r.onload=function(){
+    var txt=String(r.result||'');
+    var itens=/BEGIN:VCARD/i.test(txt)?parseVcf(txt):parseCsv(txt);
+    abrirImport(itens);
+  };
+  r.readAsText(f,'utf-8');
+});
+document.addEventListener('input',function(ev){
+  if(!(ev.target.dataset&&ev.target.dataset.impbusca)||!st.imp)return;
+  var fq=norm(ev.target.value);
+  document.querySelectorAll('#impList .imp-row').forEach(function(row){
+    var x=st.imp.itens[Number(row.dataset.i)];row.hidden=!!fq&&norm(x.nome+' '+x.telefone).indexOf(fq)<0});
 });
 
 /* ---------- fotos ---------- */
