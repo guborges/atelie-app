@@ -70,6 +70,18 @@ h3{font-family:var(--f-display);font-weight:400;font-size:32px;line-height:1.05;
 .list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
 .row{display:flex;gap:12px;align-items:center;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:none;width:100%;text-align:left}
 .row:last-child{border-bottom:0}
+.row-x{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.row-x:last-child{border-bottom:0}
+.row-x .row{border-bottom:0;flex:1;min-width:0;padding-right:8px}
+.recebi{flex:none;align-self:center;margin-right:12px;border:1px solid var(--ok);color:var(--ok);background:none;border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;min-height:36px}
+.check{display:flex;gap:10px;align-items:center;font-size:15px;padding:2px 0}
+.check input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+.mais{border-top:1px solid var(--line);padding-top:12px}
+.mais summary{font-weight:600;color:var(--accent);cursor:pointer;padding:4px 0}
+.mais summary em{font-style:normal;font-weight:400;color:var(--muted);font-size:13px;margin-left:4px}
+.mais[open] summary{margin-bottom:12px}
+.mais[open]{display:flex;flex-direction:column;gap:14px}
 button.row:active{background:var(--surface-2)}
 .row .main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .row .t{font-weight:600}

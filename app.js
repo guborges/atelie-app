@@ -76,6 +76,7 @@ function pago(p){return (p.pagamentos||[]).reduce(function(a,x){return a+(Number
 function saldo(p){return Math.max(0,(Number(p.valor)||0)-pago(p))}
 function ativos(){return db.pedidos.filter(function(p){return p.status!=='entregue'})}
 function byHora(a,b){return (a.data+(a.hora||'00:00')).localeCompare(b.data+(b.hora||'00:00'))}
+function entregaEv(pid){return db.eventos.find(function(e){return e.pedidoId===pid&&e.tipo==='entrega'&&!e.feito})}
 function byPrazo(a,b){return (a.prazo||'9999').localeCompare(b.prazo||'9999')}
 
 /* ---------- erros ---------- */
@@ -253,8 +254,10 @@ function pedRow(p,hideCli){
   var c=cli(p.clienteId),pr=prazoTxt(p),m=membro(p.costureiraId);
   var sub=[];if(!hideCli)sub.push(c?c.nome:'Sem cliente');sub.push(tipoL(p.tipo));if(m)sub.push(m.nome.split(' ')[0]);
   var extra=(can('ver_financeiro')&&p.status!=='orcamento'&&saldo(p)>0)?' · falta '+money(saldo(p)):'';
-  return '<button class="row" data-a="pedido" data-id="'+p.id+'"><span class="main"><span class="t">'+esc(p.peca)+'</span>'+
+  var row='<button class="row" data-a="pedido" data-id="'+p.id+'"><span class="main"><span class="t">'+esc(p.peca)+'</span>'+
     '<span class="s">'+esc(sub.join(' · '))+'</span><span class="s"><span class="'+pr.c+'">'+pr.t+'</span>'+extra+'</span></span>'+pill(p.status)+'</button>';
+  if(!extra)return row;
+  return '<div class="row-x">'+row+'<button class="recebi" data-a="receber" data-id="'+p.id+'" aria-label="Registrar pagamento de '+esc(p.peca)+'">Recebi</button></div>';
 }
 
 /* ---------- views ---------- */
@@ -777,6 +780,21 @@ function comboFechar(pfx){var box=$('#'+pfx+'List'),inp=$('#'+pfx+'Busca');if(bo
 function comboSet(pfx,c){$('#'+pfx+'Id').value=c?c.id:'';$('#'+pfx+'Busca').value=c?c.nome:'';comboFechar(pfx)}
 
 function clienteOpts(sel,blank){return optList(db.clientes.slice().sort(function(a,b){return a.nome.localeCompare(b.nome,'pt-BR')}).map(function(c){return [c.id,c.nome]}),sel,blank)}
+SHEETS.receber=function(id,o){
+  var p=ped(id);if(!p)return head('','Pedido não encontrado');
+  var c=cli(p.clienteId),sd=saldo(p);
+  var h=head((c?c.nome+' · ':'')+p.peca,o.entregue?'Entregue':'Recebi');
+  h+='<div class="money" style="margin-bottom:14px"><div><span>Valor</span><b>'+money(p.valor)+'</b></div><div><span>Pago</span><b>'+money(pago(p))+'</b></div>'+
+     '<div class="falta"><span>Falta</span><b>'+money(sd)+'</b></div></div>';
+  if(o.entregue)h+='<p style="margin:0 0 12px">A peça foi entregue e ainda falta receber <b>'+money(sd)+'</b>. Ela pagou agora?</p>';
+  h+='<form class="form" data-form="pag" data-id="'+p.id+'" data-fechar="1">'+
+    '<div class="grid2"><label class="field"><span>Valor recebido (R$)</span><input id="rcV" name="valor" inputmode="decimal" required value="'+String(sd).replace('.',',')+'"></label>'+
+    '<label class="field"><span>Dia em que recebeu</span><input id="rcD" type="date" name="data" required max="'+today()+'" value="'+today()+'"></label></div>'+
+    '<div class="field"><span>Forma</span>'+radios('forma',FORMAS,'pix')+'</div>'+
+    '<div class="actions" style="margin-top:6px"><button type="button" class="btn ghost" data-a="close">'+(o.entregue?'Ainda não':'Cancelar')+'</button><button type="submit" class="btn primary">Registrar</button></div></form>';
+  return h;
+};
+
 function formBtns(){return '<div class="actions" style="margin-top:6px"><button type="button" class="btn ghost" data-a="close">Cancelar</button><button type="submit" class="btn primary">Salvar</button></div>'}
 
 SHEETS.formPedido=function(id,o){
@@ -784,17 +802,22 @@ SHEETS.formPedido=function(id,o){
   var restrita=!can('ver_todos_pedidos');
   var resp=p?p.costureiraId:(restrita?me.id:'');
   var equipe=db.equipe.filter(function(m){return m.ativo}).map(function(m){return [m.id,m.nome+(m.papel==='dona'?' (dona)':'')]});
+  var ent=p?entregaEv(p.id):null;
   var h=head(p?'Editar pedido':'Novo pedido',p?p.peca:'O que vamos fazer?');
   h+='<form class="form" data-form="pedido" data-id="'+(id||'')+'">'+
     comboCliente('fpCli',cid,true)+
     '<label class="field"><span>Peça</span><input id="fpPeca" name="peca" required placeholder="Ex.: vestido de madrinha" value="'+esc(p?p.peca:'')+'"></label>'+
-    '<div class="field"><span>Tipo</span>'+radios('tipo',TIPOS,p?p.tipo:'sob_medida')+'</div>'+
+    '<label class="field"><span>Entrega</span><input id="fpPrazo" type="date" name="prazo" required value="'+(p?(p.prazo||''):iso(addDays(new Date(),14)))+'"></label>'+
+    (ent?'<p class="hint">A entrega já está na agenda. Se mudar a data, a agenda acompanha.</p>'
+        :'<label class="check"><input type="checkbox" id="fpAg" name="agenda" value="1"'+(p?'':' checked')+'><span>Marcar a entrega na agenda</span></label>');
+  var mais='<div class="field"><span>Tipo</span>'+radios('tipo',TIPOS,p?p.tipo:'sob_medida')+'</div>'+
     '<label class="field"><span>Descrição <em>(tecido, modelo, detalhes)</em></span><textarea id="fpDesc" name="descricao">'+esc(p?p.descricao:'')+'</textarea></label>'+
-    '<div class="grid2"><label class="field"><span>Entrega</span><input id="fpPrazo" type="date" name="prazo" required value="'+(p?(p.prazo||''):iso(addDays(new Date(),14)))+'"></label>'+
-    '<label class="field"><span>Responsável</span><select id="fpCost" name="costureira_id"'+(restrita?' disabled':'')+'>'+optList(equipe,resp,'Não definida')+'</select></label></div>'+
+    '<label class="field"><span>Responsável</span><select id="fpCost" name="costureira_id"'+(restrita?' disabled':'')+'>'+optList(equipe,resp,'Não definida')+'</select></label>'+
     (p?'<label class="field"><span>Etapa</span><select id="fpSt" name="status">'+optList(STATUS.map(function(s){return [s.k,s.l]}),p.status)+'</select></label>':'');
-  if(can('ver_financeiro'))h+='<div class="grid2"><label class="field"><span>Valor total (R$)</span><input id="fpVal" name="valor" inputmode="decimal" placeholder="0,00" value="'+(p&&p.valor?String(p.valor).replace('.',','):'')+'"></label>'+
+  if(can('ver_financeiro'))mais+='<div class="grid2"><label class="field"><span>Valor total (R$)</span><input id="fpVal" name="valor" inputmode="decimal" placeholder="0,00" value="'+(p&&p.valor?String(p.valor).replace('.',','):'')+'"></label>'+
     (p?'':'<label class="field"><span>Sinal recebido (R$)</span><input id="fpSinal" name="sinal" inputmode="decimal" placeholder="0,00"></label>')+'</div>';
+  // editar: tudo aberto. Novo: so o essencial, resto recolhido
+  h+=p?mais:'<details class="mais"><summary>Mais detalhes <em>tipo, descrição, responsável'+(can('ver_financeiro')?', valor':'')+'</em></summary>'+mais+'</details>';
   return h+formBtns()+'</form>';
 };
 SHEETS.formEvento=function(id,o){
@@ -851,6 +874,7 @@ var A={
     if(!b.dataset.id&&!db.clientes.length){toast(can('gerenciar_clientes')?'Cadastre uma cliente primeiro.':'Nenhuma cliente disponível.');return}
     openSheet('formPedido',b.dataset.id,{c:b.dataset.c})},
   formEvento:function(b){openSheet('formEvento',b.dataset.id,{c:b.dataset.c,p:b.dataset.p,t:b.dataset.t})},
+  receber:function(b){openSheet('receber',b.dataset.id,{})},
   formCliente:function(b){openSheet('formCliente',b.dataset.id)},
   formMedidas:function(b){openSheet('formMedidas',b.dataset.id)},
   filtro:function(b){st.pedFiltro=b.dataset.id;if(st.view!=='pedidos'){st.view='pedidos';window.scrollTo(0,0)}closeSheet();render()},
@@ -864,7 +888,7 @@ var A={
   copy:function(b){var v=b.dataset.v;try{navigator.clipboard.writeText(v).then(function(){toast('Copiado')},function(){toast(v)})}catch(e){toast(v)}},
   status:function(b){var id=b.dataset.id,s=b.dataset.s;
     mutate(function(){return q(sb.from('pedidos').update({status:s}).eq('id',id))},stInfo(s).l).then(function(ok){
-      var p=ped(id);if(ok&&p&&s==='entregue'&&can('ver_financeiro')&&saldo(p)>0)toast('Entregue. Ainda falta receber '+money(saldo(p))+'.')})},
+      var p=ped(id);if(ok&&p&&s==='entregue'&&can('ver_financeiro')&&saldo(p)>0)openSheet('receber',id,{entregue:true})})},
   feito:function(b){var e=evt(b.dataset.id);mutate(function(){return q(sb.from('eventos').update({feito:!e.feito}).eq('id',e.id))})},
   delPag:function(b){mutate(function(){return q(sb.from('pagamentos').delete().eq('id',b.dataset.id))},'Pagamento removido')},
   delFoto:function(b){
@@ -991,12 +1015,18 @@ document.addEventListener('submit',function(ev){
     if(!isNew&&fd.has('status'))row.status=g('status');
     var valor=num(g('valor')),sinal=num(g('sinal'));
     if(isNew&&sinal)row.status='aprovado';
+    var entAntes=isNew?null:entregaEv(pid),querAgenda=g('agenda')==='1'&&!!row.prazo,cEnt=cli(row.cliente_id);
+    var virouEntregue=!isNew&&row.status==='entregue'&&ped(pid).status!=='entregue';
     st.sheet=null;closeSheet();
     mutate(async function(){
       if(isNew){row.id=pid;await q(sb.from('pedidos').insert(row))}else await q(sb.from('pedidos').update(row).eq('id',pid));
+      if(entAntes&&row.prazo&&entAntes.data!==row.prazo)await q(sb.from('eventos').update({data:row.prazo}).eq('id',entAntes.id));
+      else if(!entAntes&&querAgenda)await q(sb.from('eventos').insert({id:uuid(),tipo:'entrega',titulo:'Entrega, '+(cEnt?cEnt.nome.split(' ')[0]:row.peca),
+        data:row.prazo,hora:null,duracao_min:30,lembrete_min:1440,cliente_id:row.cliente_id,pedido_id:pid,obs:row.peca}));
       if(can('ver_financeiro')&&(valor!=null||isNew))await q(sb.from('pedido_financeiro').upsert({pedido_id:pid,valor:valor||0}));
       if(can('ver_financeiro')&&isNew&&sinal)await q(sb.from('pagamentos').insert({id:uuid(),pedido_id:pid,valor:sinal,forma:'pix'}));
-    },isNew?'Pedido criado':'Pedido salvo').then(function(ok){if(ok&&ped(pid))openSheet('pedido',pid)});
+    },isNew?'Pedido criado':'Pedido salvo').then(function(ok){var pp=ped(pid);if(!ok||!pp)return;
+      if(virouEntregue&&can('ver_financeiro')&&saldo(pp)>0)openSheet('receber',pid,{entregue:true});else openSheet('pedido',pid)});
   }
   else if(kind==='evento'){
     var eid=id||uuid(),nw=!id;
@@ -1044,10 +1074,13 @@ document.addEventListener('submit',function(ev){
   }
   else if(kind==='pag'){
     var v=num(g('valor'));if(!v||v<=0){toast('Informe o valor recebido.');return}
-    var p=ped(id);
+    var p=ped(id),dt=g('data');
+    if(dt&&dt>today()){toast('A data do recebimento não pode ser no futuro.');return}
+    var pg={id:uuid(),pedido_id:id,valor:v,forma:g('forma')||'pix'};if(dt)pg.data=dt;
+    if(f.dataset.fechar){st.sheet=null;closeSheet()}
     mutate(async function(){
       if(!p.temFin)await q(sb.from('pedido_financeiro').upsert({pedido_id:id,valor:p.valor||0}));
-      await q(sb.from('pagamentos').insert({id:uuid(),pedido_id:id,valor:v,forma:g('forma')||'pix'}));
+      await q(sb.from('pagamentos').insert(pg));
       if(p.status==='orcamento')await q(sb.from('pedidos').update({status:'aprovado'}).eq('id',id));
     },'Pagamento registrado');
   }
