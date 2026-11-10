@@ -16,7 +16,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..600&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* Layout: app de uma coluna (max 520px), titulo serifado, barra inferior fixa + botao "+", folhas (bottom sheets) */
 :root{
@@ -28,7 +28,7 @@
   --tape:#F1D27A; --tape-ink:#5A4A1C;
   --scrim:rgba(30,15,28,.45);
   --shadow:0 12px 32px rgba(60,30,55,.16);
-  --f-display:"Instrument Serif", Georgia, "Times New Roman", serif;
+  --f-display:"Bodoni Moda", "Didot", Georgia, "Times New Roman", serif;
   --f-body:"Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   color-scheme:light;
@@ -43,6 +43,9 @@
   color-scheme:dark;
 }}
 *{box-sizing:border-box}
+p,.note,.sub,.fat-nota{text-wrap:pretty}
+.fat-card .empty{background:none;border:0;border-radius:0;padding:14px 0 4px}
+.fat-card .list{background:none;border:0;border-radius:0;border-top:1px solid var(--line)}
 html,body{min-height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
@@ -199,9 +202,9 @@ textarea{min-height:80px;resize:vertical}
 .photos label{display:grid;place-items:center;border:1.5px dashed var(--line);background:var(--surface);color:var(--muted);font-size:12px;text-align:center;cursor:pointer;padding:6px;position:relative}
 .photos label input{position:absolute;width:1px;height:1px;opacity:0}
 .bigimg{width:100%;border-radius:16px;display:block}
-.tape{height:16px;border-radius:4px;margin:2px 0 12px;background-color:var(--tape);
-  background-image:repeating-linear-gradient(90deg,var(--tape-ink) 0 1px,transparent 1px 20px),repeating-linear-gradient(90deg,var(--tape-ink) 0 1px,transparent 1px 4px);
-  background-size:100% 100%,100% 40%;background-repeat:no-repeat;opacity:.9}
+.tape{display:block;width:100%;height:24px;border-radius:4px;margin:2px 0 12px;background:var(--tape)}
+.tape line{stroke:var(--tape-ink);stroke-width:1}
+.tape text{fill:var(--tape-ink);font:600 9px var(--f-mono)}
 .meas{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
 .mrow{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px;min-width:0}
 .mrow span{color:var(--muted);min-width:0}

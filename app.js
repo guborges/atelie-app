@@ -285,6 +285,14 @@ function vHoje(){
 }
 /* ---------- faturamento (pagamentos recebidos, pela data do pagamento) ---------- */
 var FAT_PER=[['30','30 dias'],['90','90 dias'],['180','6 meses'],['365','1 ano']];
+// fita metrica: marca a cada 1 cm, media a cada 5, numerada a cada 10
+function fitaSvg(){
+  var s='<svg class="tape" viewBox="0 0 400 24" preserveAspectRatio="xMinYMid slice" aria-hidden="true">';
+  for(var cm=0;cm<=100;cm++){var x=cm*4+0.5,len=cm%10===0?9:cm%5===0?6:3;
+    s+='<line x1="'+x+'" y1="0" x2="'+x+'" y2="'+len+'"/>';
+    if(cm%10===0&&cm>0)s+='<text x="'+(x+1.5)+'" y="21">'+cm+'</text>';}
+  return s+'</svg>';
+}
 function fatPagamentos(){var l=[];db.pedidos.forEach(function(p){(p.pagamentos||[]).forEach(function(x){l.push({data:x.data,valor:Number(x.valor)||0})})});return l}
 function moneyCurto(v){
   v=Number(v)||0;
@@ -633,7 +641,7 @@ SHEETS.cliente=function(id,o){
     var m=c.medidas.find(function(x){return x.id===st.medSel[c.id]})||c.medidas[c.medidas.length-1];
     var prev=c.medidas[c.medidas.indexOf(m)-1];
     if(c.medidas.length>1)h+='<div class="chips" style="margin-bottom:6px">'+c.medidas.slice().reverse().map(function(x,i){return '<button class="chip'+(x.id===m.id?' on':'')+'" data-a="medSel" data-id="'+c.id+'" data-m="'+x.id+'">'+fmtD(x.data)+(i===0?' · atual':'')+'</button>'}).join('')+'</div>';
-    h+='<div class="tape" aria-hidden="true"></div>';
+    h+=fitaSvg();
     MEDIDAS.forEach(function(g){
       var fs=g.f.filter(function(f){return m.valores[f]!=null});if(!fs.length)return;
       h+='<div class="mgroup"><h4>'+g.g+'</h4><div class="meas">'+fs.map(function(f){

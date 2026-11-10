@@ -1,6 +1,6 @@
 // Service worker: guarda a "casca" do app para abrir rapido e sem internet.
 // Dados (Supabase) nunca sao cacheados aqui.
-const CACHE = 'atelie-v7';
+const CACHE = 'atelie-v8';
 const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js'];
